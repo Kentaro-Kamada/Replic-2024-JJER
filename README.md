@@ -2,7 +2,7 @@
 
 [鎌田（2024）](https://researchmap.jp/kamaken/published_papers/44513554)の再現コードです。
 
-再現結果：https://kentaro-kamada.github.io/Replic-2024-JJRE/
+再現結果：https://kentaro-kamada.github.io/Replic-2024-JJER/
 
 ## 再現の方法
 
