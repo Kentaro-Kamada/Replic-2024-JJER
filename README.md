@@ -48,6 +48,7 @@
 
 ```{r}
 install.package('renv')
+renv::activate()
 renv::restore()
 ```
 
