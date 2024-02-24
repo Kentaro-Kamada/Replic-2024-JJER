@@ -1,0 +1,200 @@
+---
+title: 再現コード
+author: Kentaro Kamada
+date: 2024-02-23
+crossref: 
+  fig-title: 図
+  tbl-title: 表
+  fig-prefix: 図
+  tbl-prefix: 表
+---
+
+# データの整理
+
+## 変数ラベル・値ラベルのリストを作成
+
+```{r}
+#| child: 04_script/変数ラベル値ラベル作成.qmd
+```
+
+## 大学コードの整理
+
+```{r}
+#| child: 04_script/大学コード処理.qmd
+```
+
+## データの整理
+
+```{r}
+#| child: 04_script/データ前処理.qmd
+```
+
+# 前処理・分析
+
+```{r}
+#| child: 05_教育学研究/分析.qmd
+```
+
+# 分析結果
+
+## 表1
+
+```{r}
+#| label: tbl-timing-taikoka
+#| tbl-cap: 大綱化後の初年次教育導入時期
+
+read_csv('01_input/改革年変数.csv') |> 
+  select(大学名, 改革年_大綱化) |> 
+  mutate(大学名 = str_remove(大学名, '大学')) |> 
+  group_by(改革年_大綱化) |> 
+  summarise(改革を実施した大学 = str_c(大学名, collapse = '、')) |> 
+  filter(改革年_大綱化 != 0) |> 
+  rename(year = 改革年_大綱化, 初年次教育を導入した大学 = 改革を実施した大学) |> 
+  datasummary_df(output = 'html', fmt = 0) 
+
+```
+
+## 表2
+
+```{r}
+#| label: tbl-timing-AL
+#| tbl-cap: 「質的転換答申」以降の初年次教育改革の実施時期
+
+read_csv('01_input/改革年変数.csv') |> 
+  select(大学名, 改革年_AL) |> 
+  mutate(大学名 = str_remove(大学名, '大学')) |> 
+  group_by(改革年_AL) |> 
+  summarise(改革を実施した大学 = str_c(大学名, collapse = '、')) |> 
+  filter(改革年_AL != 0) |> 
+  rename(year = 改革年_AL) |> 
+  datasummary_df(output = 'html', fmt = 0) 
+
+```
+
+## 図1
+
+```{r}
+#| label: fig-study-time
+#| fig-cap: 週あたり学業時間の推移
+
+study_time_data |> 
+  filter(男女 == '総数' & 学校段階 %in% c('大学・大学院', '大学') & 行動 == '学業' & 曜日 == '週全体') |> 
+  mutate(時間 = 時間*7/60) |> 
+  ggplot(aes(factor(年次), 時間, group = 1))+
+  geom_line()+
+  labs(
+    x = '調査年',
+    y = '学業時間（週あたり・時間）',
+    caption = '・出典：総務省「社会生活基本調査」生活時間に関する結果\n・2006年調査までは「大学・大学院」、2011年調査以降は「大学」の学業時間'
+  )
+
+```
+
+## 図2
+
+```{r}
+#| label: fig-effect1
+#| fig-cap: 大綱化後の改革の「勉強・研究が重点」に対する効果
+
+bind_rows(
+  `1` = res_imp_大綱化 |> unnest(model1) |> pool_rubin(),
+  `2` = res_imp_大綱化 |> unnest(model2) |> pool_rubin(),
+  `3` = res_imp_大綱化 |> unnest(model3) |> pool_rubin(),
+  .id = 'model'
+) |> 
+  select(model, estimate, conf.low, conf.high) |> 
+  
+  ggplot(aes(model, estimate, ymin = conf.low, ymax = conf.high))+
+  geom_hline(yintercept = 0, linetype = 'dashed', color = 'grey')+
+  geom_pointrange()+
+  geom_text(aes(label = round(estimate, 3)), nudge_x = 0.2)+
+  labs(
+    y = '「勉強・研究」選択確率の差分',
+    caption = 'model1：単回帰分析による関連\nmodel2：大学固定効果と調査年固定効果を投入\nmodel3：model2 + 共変量として性別、出身階層、親年収、学部、入試形態、奨学金有無を追加')
+
+```
+
+
+## 図3
+
+```{r}
+#| label: fig-effect2
+#| fig-cap: 「質的転換答申」後の改革の「勉強・研究が重点」に対する効果
+
+bind_rows(
+  `1` = res_imp_AL1 |> unnest(model1) |> pool_rubin(),
+  `2` = res_imp_AL1 |> unnest(model2) |> pool_rubin(),
+  `3` = res_imp_AL1 |> unnest(model3) |> pool_rubin(),
+  .id = 'model'
+) |> 
+  select(model, estimate, conf.low, conf.high) |> 
+  
+  ggplot(aes(model, estimate, ymin = conf.low, ymax = conf.high))+
+  geom_hline(yintercept = 0, linetype = 'dashed', color = 'grey')+
+  geom_pointrange()+
+  geom_text(aes(label = round(estimate, 3)), nudge_x = 0.2)+
+  scale_y_continuous(breaks = seq(-0.04, 0.08, 0.02))+
+  labs(
+    y = '「勉強・研究」選択確率の差分',
+    caption = 'model1：単回帰分析による関連\nmodel2：大学固定効果と調査年固定効果を投入\nmodel3：model2 + 共変量として性別、出身階層、親年収、学部、入試形態、奨学金有無を追加')
+
+```
+
+## 図4
+
+```{r}
+#| label: fig-effect3
+#| fig-cap: 「質的転換答申」後の改革の「大学と関係する自習時間」に対する効果
+
+bind_rows(
+  `1` = res_imp_AL2 |> unnest(model1) |> pool_rubin(),
+  `2` = res_imp_AL2 |> unnest(model2) |> pool_rubin(),
+  `3` = res_imp_AL2 |> unnest(model3) |> pool_rubin(),
+  .id = 'model'
+) |> 
+  select(model, estimate, conf.low, conf.high) |>
+
+  ggplot(aes(model, estimate, ymin = conf.low, ymax = conf.high))+
+  geom_hline(yintercept = 0, linetype = 'dashed', color = 'grey')+
+  geom_pointrange()+
+  geom_text(aes(label = round(estimate, 3)), nudge_x = 0.2)+
+  labs(
+    y = '大学と関係する自習時間の差分（週あたり・分）',
+    caption = 'model1：単回帰分析による関連\nmodel2：大学固定効果と調査年固定効果を投入\nmodel3：model2 + 共変量として性別、出身階層、親年収、学部、入試形態、奨学金有無を追加')
+
+```
+
+## 図5
+
+```{r}
+#| label: fig-heterogeneity
+#| fig-cap: 出身階層による効果の異質性
+
+
+# 信頼区間
+list(
+  `（A）「大綱化」・「勉強・研究が重点」` = result_hetero_大綱化 |> unnest(result1) |> pool_rubin(),
+  `（B）「質的転換答申」・「勉強・研究が重点」` = result_hetero_AL |> unnest(result1) |> pool_rubin(),
+  `（C）「質的転換答申」・「大学と関係する自習時間」` = result_hetero_AL |> unnest(result2) |> pool_rubin()
+) |> 
+  list_rbind(names_to = 'model') |> 
+  # 出身階層並べ替え
+  mutate(term = fct_relevel(term, levels(df_seminar_大綱化$出身階層))) |> 
+  # 出身階層ごとにプロット
+  ggplot(aes(term, estimate, ymin = conf.low, ymax = conf.high))+
+  geom_hline(yintercept = 0, linetype = 'dashed', color = 'grey')+
+  geom_pointrange(size = 0.1)+
+  geom_text(aes(label = round(estimate, digits = 3)), nudge_x = 0.3, size = 3)+
+  facet_wrap(vars(model), scales = 'free_y', nrow = 4)+
+  labs(x = '出身階層', y = 'ATT')
+  
+
+```
+
+
+# Appendix
+
+```{r}
+#| child: 05_教育学研究/Appendix.qmd
+```
+

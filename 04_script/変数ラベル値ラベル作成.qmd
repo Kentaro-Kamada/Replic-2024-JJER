@@ -1,0 +1,42 @@
+
+```{r}
+#| eval: false
+#| filename: 04_script/変数ラベル値ラベル作成.qmd
+
+library(tidyverse)
+library(haven)
+library(kamaken)
+
+
+# データ読み込み
+result <- 
+  tibble(
+    year = c(1993, 1991, 1992, 1994:2020),
+    path = list.files('01_rawdata/生協調査', full.names = T),
+    enc = c(rep('cp932', 22), 
+            'utf-8', 'utf-8', 'cp932', 'cp932', 'cp932', 'utf-8', 'cp932', 'cp932'),
+    data = map2(path, enc, ~read_sav(.x, encoding = .y))
+  )
+
+# ラベルの作成
+label <- 
+  result %>% 
+  mutate(
+    varlab = map(data, haven_variable_label),
+    vallab = map(data, haven_value_label)
+  )
+
+
+# 書き出し
+label %>% 
+  select(year, varlab) %>% 
+  unnest(varlab) %>% 
+  write_excel_csv('02_middle/varlab.csv')
+  
+
+label %>% 
+  select(year, vallab) %>% 
+  unnest(vallab) %>% 
+  write_excel_csv('02_middle/vallab.csv')
+
+```

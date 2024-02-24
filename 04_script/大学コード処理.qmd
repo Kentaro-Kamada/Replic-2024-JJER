@@ -1,0 +1,50 @@
+
+```{r}
+#| eval: false
+#| filename: 04_script/大学コード処理.qmd
+
+library(tidyverse)
+library(kamaken)
+
+
+# 変数ラベル・値ラベル
+varlab <- read_csv('02_middle/varlab.csv')
+vallab <- read_csv('02_middle/vallab.csv')
+
+
+# 各年度の大学名と値の対応表
+daigaku <- 
+  vallab %>% 
+  filter(str_detect(変数, '(UNV|大学|daigaku)'))
+
+# 大学名のリコードに使う正規表現
+daigaku_regex <- readxl::read_excel('01_input/大学名リコードregex.xlsx')
+
+
+# 問題点は同じ大学でも年度によってコードが違う点と，年度によってラベルの表記に揺れがある点
+# まずは表記揺れを直す
+
+daigaku %>% 
+  mutate(
+    ラベル = 
+      # unicode正規化（括弧や全角半角を統一）
+      stringi::stri_trans_nfkc(ラベル) %>%
+      # 半角括弧を除く
+      str_remove_all('[\\(\\)]') %>% 
+      # hogehoge短大をhogehoge短期大学に変換
+      str_replace('短大', '短期大学') %>% 
+      # hogehoge大をhogehoge大学に変換
+      str_replace('大$', '大学') 
+    ) %>% 
+  mutate(
+    ラベル =      
+      # 個別の大学の表記の統一
+      str_replace_all(ラベル, set_names(daigaku_regex$new, daigaku_regex$old))
+  ) %>% 
+  select(-変数) %>% 
+  # 年度・値・ラベルの対応表を出力
+  write_excel_csv('02_middle/年度別大学コード.csv')
+
+
+```
+

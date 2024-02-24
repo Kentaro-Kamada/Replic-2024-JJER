@@ -1,0 +1,27 @@
+project:
+  title: "replic-2024-JJER"
+  execute-dir: project
+  type: website
+  output-dir: docs
+  render: 
+    - 05_教育学研究/本文.qmd
+format: 
+  html:
+    code-fold: true
+    code-tools: true
+    toc: true
+execute: 
+  warning: false
+  message: false
+  echo: true
+  cache: false
+  freeze: auto
+knitr:
+  opts_chunk: 
+    dev: svglite
+
+
+
+
+
+

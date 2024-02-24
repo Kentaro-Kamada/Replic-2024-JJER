@@ -1,0 +1,497 @@
+
+## パッケージ読み込み・関数定義
+
+```{r}
+
+library(knitr)
+library(estatapi)
+library(fixest)
+library(mice)
+library(didimputation)
+library(modelsummary)
+library(tidyverse)
+library(kamaken)
+
+# Rubinの公式で多重代入の結果を統合
+pool_rubin <- function(.tibble) {
+  .tibble |> 
+    mutate(variance = std.error^2) |>
+    summarise(
+      M = n(),
+      estimate.combined = mean(estimate),
+      Vw = sum(variance) / M,
+      Vb = sum((estimate - mean(estimate)) ^ 2) / (M - 1),
+      Vt = Vw + (1 + 1 / M) * Vb,
+      SE.combined = sqrt(Vt),
+      .by = term
+    ) |> 
+    # 信頼区間計算
+    mutate(
+      conf.low = estimate.combined - qnorm(1 - .025)*SE.combined,
+      conf.high = estimate.combined + qnorm(1 - .025)*SE.combined
+    ) |> 
+    select(term, M, estimate = estimate.combined, std.error = SE.combined, conf.low, conf.high)
+} 
+
+
+# 並列化設定
+options(mc.cores = 8)
+
+theme_set(
+  theme_bw(base_family = 'Hiragino Sans', base_size = 8)+
+    theme(
+      # キャプションを左寄せ（デフォルトは右）
+      plot.caption = element_text(hjust = 0),
+    )
+)
+
+
+appid <- Sys.getenv('ESTAT_APPID')
+
+
+```
+
+
+## 大学生の生活時間データの取得
+
+### ESTATより社会生活基本調査のデータを取得
+
+
+```{r}
+
+# データ取得
+study_time_result <- 
+  bind_rows(
+    estat_getStatsData(appid, '0000090009', 
+                       cdCat03 = '023', cdCat04 = '002,006,007,012,013,014,015,018,020'),
+    estat_getStatsData(appid, '0000090247',
+                       cdCat03 = '023', cdCat04 = '002,006,007,013,014,015,016,019,021'),
+    estat_getStatsData(appid, '0000090722',
+                       cdCat03 = '017', cdCat04 = '002,006,007,013,014,015,016,019,021'),
+    estat_getStatsData(appid, '0000091391',
+                       cdCat03 = '017', cdCat04 = '002,006,007,013,014,015,016,019,021'),
+    estat_getStatsData(appid, '0003002460', cdTab = '006',
+                       cdCat02 = '002,006,007,013,014,015,016,019,021', cdCat04 = '018'),
+    estat_getStatsData(appid, '0003066956',
+                       cdCat02 = '007,011,012,018,019,020,021,024,026', cdCat04 = '021'),
+    estat_getStatsData(appid, '0003199845',
+                       cdCat03 = '5', cdCat04 = '0', 
+                       cdCat05 = '0', cdCat06 = 'H0702,H0706,H0707,H0713,H0714,H0715,H0716,H0719,H0721'),
+    estat_getStatsData(appid, '0003456749',
+                       cdCat03 = '5', cdCat04 = '0', 
+                       cdCat05 = '0', cdCat06 = '02,06,07,13,14,15,16,19,21')
+  )
+
+
+```
+
+### 取得したデータの整形
+
+```{r}
+
+# 前処理
+study_time_data <-
+  study_time_result |> 
+  # 列名を統一
+  mutate(
+    曜日 = coalesce(
+      `曜日（４）090001`, `曜日５Ａ090304`, `曜日（５A）090661`, 曜日, `曜日-2011`, `曜日6A_071_2016A`
+    ),
+    男女 = coalesce(
+      `男女３090002`, `男女３090630`, 男女, `性別-2011`, `男女3_001_2016A`
+    ),
+    学校段階 = coalesce(
+      `教育Ａ090014`, `教育（２９）090112`, `教育就業２０090305`, `教育就業２０090662`, `教育，ふだんの就業状態`, `教育，ふだんの就業状態-2011`, `教育16_004_2016A`, 教育
+    ),
+    行動 = coalesce(
+      `行動２２時090005`, `総平均090103`, `１０上行総時在090306`, `行動の種類２３090634`, 行動の種類, `行動の種類別総平均時間等_2011`, `行動の種類26_074_2016A`
+    )
+  ) |> 
+  select(年次 = time_code, 曜日, 男女, 学校段階, 行動, 時間 = value) |> 
+  # フォーマットの統一
+  mutate(
+    年次 = parse_number(年次) / 1000000,
+    曜日 = str_remove(曜日, '\\d{1,2}_'),
+    男女 = str_remove(男女, '\\d{1,2}_') |> 
+      str_replace('男女計', '総数'),
+    学校段階 = str_trim(学校段階, 'both') |>
+      str_remove_all('(\\d_|在学者|・専門学校|中学・|中学，)'),
+    行動 = case_when(
+      str_detect(行動, '睡眠') ~ '睡眠',
+      str_detect(行動, '学業(?!以外)') ~ '学業',
+      # 2006年までは「学習・研究」2011年以降は「学習・自己啓発・訓練」
+      str_detect(行動, '学習') ~ '学習（学業以外）',
+      str_detect(行動, '趣味・娯楽') ~ '趣味・娯楽',
+      str_detect(行動, '休養・くつろぎ') ~ '休養・くつろぎ',
+      str_detect(行動, '仕事') ~ '仕事',
+      str_detect(行動, '交際・付き合い') ~ '交際・付き合い',
+      str_detect(行動, 'テレビ・ラジオ　?・新聞・雑誌') ~ 'テレビ・ラジオ・新聞・雑誌',
+      str_detect(行動, 'その他') ~ 'その他',
+      TRUE ~ 行動
+    ),
+    # 「時.分」を「分」になおす（「3.4」は「3時間40分」なので注意！！）
+    時間_時 = case_when(
+      年次 %in% c(1986, 1991, 1996, 2001) ~ 
+        str_extract(時間, '^.') |> 
+        parse_double(),
+      TRUE ~ 0
+    ),
+    時間_分 = case_when(
+      年次 %in% c(1986, 1991, 1996, 2001) ~ 
+        str_extract(時間, '(?<=\\.).+$') |> 
+        str_pad(width = 2, side = 'right', pad = '0') |> 
+        parse_double() |> 
+        coalesce(0),
+      TRUE ~ 時間
+    )
+  ) |> 
+  # 統合
+  mutate(時間 = 時間_時*60 + 時間_分) |> 
+  drop_na()
+
+
+```
+
+
+## 大学生協調査データの読み込み
+
+```{r}
+
+corp_data <- read_rds('02_middle/corp.rds')
+
+df <-
+  corp_data |> 
+  mutate(
+    入学年 = year - as.numeric(学年) + 1,
+    勉強ダミー = case_when(
+      大学生活重点 == '勉強や研究' ~ 1,
+      is.na(大学生活重点) ~ NA,
+      .default = 0
+    ) |> factor(),
+    入試形態 = fct_collapse(入試形態, その他 = c('内部進学', 'その他')),
+    親職業 = fct_infreq(親職業),
+    出身階層 = case_match(
+      親職業,
+      '農林水産業' ~ '農林水産業',
+      c('自営業', '自由業') ~ '自営業・自由業',
+      c('中小企業管理職', '中小企業経営者', '大企業管理職', '公務員管理職', '団体役員・職員・私立学校教職員') ~ '上層ノンマニュアル',
+      c('中小企業非管理職', '大企業非管理職', '公務員非管理職', 'その他職業', 'パート') ~ '被雇用者',
+      # c('大企業非管理職', '公務員非管理職') ~ '大企業・公務員被雇用者',
+      # c('中小企業非管理職', 'パート') ~ '中小企業被雇用者・パート',
+      '無回答' ~ '無回答',
+      c('無職', '年金金利生活者') ~ '無職・年金金利生活者',
+      .default = NA
+    ) |> fct_relevel('上層ノンマニュアル', '被雇用者', '自営業・自由業', '農林水産業', '無職・年金金利生活者', '無回答'),
+  ) |> 
+  mutate(大学名 = as_factor(大学名)) |> 
+  # 大学以外（専門学校・短期大学・大学院・夜間学部・大学校）を除く
+  filter(!str_detect(大学名, '(短期大学|_大学院|_夜間|大学校|専門学校)$')) 
+
+
+```
+
+### カリキュラム改革についての変数の作成
+
+```{r}
+# カリキュラム改革の年度
+daigaku_kaikaku <- read_csv('01_input/改革年変数.csv')
+
+df_seminar_大綱化 <-
+  df |> 
+  select(
+    year, 入学年, id, 大学名, 学部, 入試形態, 学年, 性別, 勉強ダミー, 
+    # アルバイト経験, 
+    奨学金有無, 親年収, 出身階層
+  ) |> 
+  # 改革年をくっつける
+  left_join(
+    daigaku_kaikaku |> select(大学名, 改革年 = 改革年_大綱化), 
+    by = '大学名'
+  ) |> 
+  # 入学年が改革年より前のケースは0、入学年が改革年以降のケースは1（改革年が0は改革がなかった大学）
+  mutate(
+    改革ダミー = case_when(
+      改革年 == 0 ~ 0,
+      入学年 < 改革年 ~ 0,
+      入学年 >= 改革年 ~ 1,
+      TRUE ~ NA_real_
+    ) |> factor(),
+  ) |> 
+  # 1年に絞る
+  filter(学年 %in% c('1年')) |> 
+  # 2004年以前のデータに絞る
+  filter(year < 2004) |> 
+  # 改革年がNAのものは対象大学でないので削除
+  filter(!is.na(改革年)) |> 
+  mutate(
+    親年収 = fct_na_level_to_value(親年収, 'わからない・無回答') |> as.ordered(),
+    出身階層 = fct_na_level_to_value(出身階層, '無回答'),
+  ) |> 
+  select(year, 大学名, 学部, 入試形態, 性別, 勉強ダミー, 奨学金有無, 親年収, 出身階層, 改革年, 改革ダミー)
+
+
+df_seminar_AL <-
+  df |> 
+  select(
+    year, 入学年, id, 大学名, 学部, 入試形態, 学年, 性別, 勉強ダミー, 
+    # アルバイト経験,
+    奨学金有無, 親年収, 出身階層, 自習時間_大学
+  ) |> 
+  # 改革年をくっつける
+  left_join(
+    daigaku_kaikaku |> select(大学名, 改革年 = 改革年_AL), 
+    by = '大学名'
+  ) |> 
+  # 入学年が改革年より前のケースは0、入学年が改革年以降のケースは1（改革年が0は改革がなかった大学）
+  mutate(
+    改革ダミー = case_when(
+      改革年 == 0 ~ 0,
+      入学年 < 改革年 ~ 0,
+      入学年 >= 改革年 ~ 1,
+      TRUE ~ NA_real_
+    ) |> factor(),
+  ) |> 
+  # 1年に絞る
+  filter(学年 %in% c('1年')) |> 
+  # 2012〜2019に期間を絞る
+  filter(between(year, 2012, 2019)) |> 
+  # 改革年がNAのものは対象大学でないので削除
+  filter(!is.na(改革年)) |> 
+  mutate(
+    親年収 = fct_na_level_to_value(親年収, 'わからない・無回答') |> as.ordered(),
+    出身階層 = fct_na_level_to_value(出身階層, '無回答'),
+  ) |> 
+  select(year, 大学名, 学部, 入試形態, 性別, 勉強ダミー, 奨学金有無, 親年収, 出身階層, 自習時間_大学, 改革年, 改革ダミー)
+
+
+```
+
+## 多重代入データの作成
+
+```{r}
+
+# 多重代入データの作成
+M <- 80
+imp_大綱化 <- 
+  mice::futuremice(
+    df_seminar_大綱化, 
+    m = M, 
+    parallelseed = 364781, 
+    n.core = 8,
+    defaultMethod = c("lasso.norm", "lasso.logreg", "polyreg", "polr")
+  )
+
+imp_AL <-
+  mice::futuremice(
+    df_seminar_AL, 
+    m = M, 
+    parallelseed = 741987, 
+    n.core = 8,
+    defaultMethod = c("lasso.norm", "lasso.logreg", "polyreg", "polr")
+  )
+
+
+```
+
+## 初年次教育の効果をDiDで推定
+
+
+```{r}
+
+# 多重代入データに対して分析を実行
+res_imp_大綱化 <-
+  imp_大綱化 |> 
+  complete('long') |> 
+  mutate(across(c(勉強ダミー, 改革ダミー), \(x) as.character(x) |> parse_double())) |> 
+  group_nest(.imp) |> 
+  mutate(
+    model1 = map(
+      data, \(data)
+      feols(勉強ダミー ~ 改革ダミー, data = data, cluster = '大学名') |> 
+        broom::tidy(conf.int = T) |> 
+        filter(term == '改革ダミー')
+    ),
+    model2 = map(
+      data, \(data) 
+      did_imputation(
+        data = data,
+        yname = '勉強ダミー', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名,
+        cluster_var = '大学名', 
+        horizon = NULL, pretrends = NULL
+      )
+    ),
+    model3 = map(
+      data, \(data) 
+      did_imputation(
+        data = data,
+        yname = '勉強ダミー', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名 + 性別 + 親年収 + 出身階層 + 学部 + 入試形態 + 奨学金有無,
+        cluster_var = '大学名', 
+        horizon = NULL, pretrends = NULL
+      )
+    ),
+  ) |> 
+  select(.imp, model1, model2, model3)
+
+
+
+res_imp_AL1 <-
+  imp_AL |>
+  complete('long') |>
+  mutate(across(c(勉強ダミー, 改革ダミー), \(x) as.character(x) |> parse_double())) |> 
+  group_nest(.imp) |>
+  mutate(
+    model1 = map(
+      data, \(data)
+      feols(勉強ダミー ~ 改革ダミー, data = data, cluster = '大学名') |> 
+        broom::tidy(conf.int = T) |> 
+        filter(term == '改革ダミー')
+    ),
+    model2 = map(
+      data, \(data) 
+      did_imputation(
+        data = data,
+        yname = '勉強ダミー', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名,
+        cluster_var = '大学名', 
+        horizon = NULL, pretrends = NULL
+      )
+    ),
+    model3 = map(
+      data, \(data) 
+      did_imputation(
+        data = data,
+        yname = '勉強ダミー', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名 + 性別 + 親年収 + 出身階層 + 学部 + 入試形態 + 奨学金有無,
+        cluster_var = '大学名', 
+        horizon = NULL, pretrends = NULL
+      )
+    ),
+  ) |> 
+  select(.imp, model1, model2, model3)
+
+
+
+res_imp_AL2 <-
+  imp_AL |>
+  complete('long') |>
+  mutate(across(c(勉強ダミー, 改革ダミー), \(x) as.character(x) |> parse_double())) |> 
+  group_nest(.imp) |>
+  mutate(
+      model1 = map(
+      data, \(data)
+      feols(自習時間_大学 ~ 改革ダミー, data = data, cluster = '大学名') |> 
+        broom::tidy(conf.int = T) |> 
+        filter(term == '改革ダミー')
+    ),
+    model2 = map(
+      data, \(data) 
+      did_imputation(
+        data = data,
+        yname = '自習時間_大学', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名,
+        cluster_var = '大学名', 
+        horizon = NULL, pretrends = NULL
+      )
+    ),
+    model3 = map(
+      data, \(data) 
+      did_imputation(
+        data = data,
+        yname = '自習時間_大学', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名 + 性別 + 親年収 + 出身階層 + 学部 + 入試形態 + 奨学金有無,
+        cluster_var = '大学名', 
+        horizon = NULL, pretrends = NULL
+      )
+    ),
+  ) |> 
+  select(.imp, model1, model2, model3)
+
+
+```
+
+## 出身階層による効果の異質性
+
+```{r}
+
+# heterogeneous ATTの推定
+
+result_hetero_大綱化 <-
+  imp_大綱化 |>
+  complete('long') |>
+  mutate(across(c(勉強ダミー, 改革ダミー), \(x) as.character(x) |> parse_double())) |> 
+  group_nest(.imp) |> 
+  mutate(
+    data = map(
+      data, \(data)
+      data |> 
+        # ウェイト作成
+        mutate(id = row_number(), value = 1, 出身階層_copy = 出身階層) |> 
+        pivot_wider(names_from = 出身階層_copy, values_from = value, values_fill = 0) |> 
+        # 改革実施後（改革ダミー=1）かつ、当該の出身階層の人のみを1に
+        mutate(across(levels(df_seminar_大綱化$出身階層), \(x) case_when(x == 1 & 改革ダミー == 1 ~ 1, .default = 0))) |> 
+        # ウェイト基準化
+        mutate(across(levels(df_seminar_大綱化$出身階層), \(x) x / sum(x)))
+    ),
+    result1 = map(
+      data, \(data)
+      did_imputation(
+        data = data, 
+        yname = '勉強ダミー', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名 + 性別 + 親年収 + 出身階層 + 学部 + 入試形態 + 奨学金有無,
+        cluster_var = '大学名', 
+        wtr = levels(df_seminar_AL$出身階層)
+      )
+    )
+  ) |> 
+  select(.imp, result1)
+
+
+
+result_hetero_AL <- 
+  imp_AL |>
+  complete('long') |>
+  mutate(across(c(勉強ダミー, 改革ダミー), \(x) as.character(x) |> parse_double())) |> 
+  group_nest(.imp) |> 
+  mutate(
+    data = map(
+      data, \(data)
+      data |> 
+        # ウェイト作成
+        mutate(id = row_number(), value = 1, 出身階層_copy = 出身階層) |> 
+        pivot_wider(names_from = 出身階層_copy, values_from = value, values_fill = 0) |> 
+        # 改革実施後（改革ダミー=1）かつ、当該の出身階層の人のみを1に
+        mutate(across(levels(df_seminar_AL$出身階層), \(x) case_when(x == 1 & 改革ダミー == 1 ~ 1, .default = 0))) |> 
+        # ウェイト基準化
+        mutate(across(levels(df_seminar_AL$出身階層), \(x) x / sum(x)))
+    ),
+    result1 = map(
+      data, \(data)
+      did_imputation(
+        data = data, 
+        yname = '勉強ダミー', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名 + 性別 + 親年収 + 出身階層 + 学部 + 入試形態 + 奨学金有無,
+        cluster_var = '大学名', 
+        wtr = levels(df_seminar_AL$出身階層)
+      )
+    ),
+    result2 = map(
+      data, \(data)
+      did_imputation(
+        data = data, 
+        yname = '自習時間_大学', gname = '改革年', tname = 'year', idname = '大学名', 
+        first_stage = ~ 0 | year + 大学名 + 性別 + 親年収 + 出身階層 + 学部 + 入試形態 + 奨学金有無,
+        cluster_var = '大学名', 
+        wtr = levels(df_seminar_AL$出身階層)
+      )
+    )
+  ) |> 
+  select(.imp, result1, result2)
+
+
+
+```
+
+
+

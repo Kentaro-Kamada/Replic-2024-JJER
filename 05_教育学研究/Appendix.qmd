@@ -1,0 +1,56 @@
+---
+crossref: 
+  fig-title: 付図
+  tbl-title: 付表
+  fig-prefix: 付図
+  tbl-prefix: 付表
+---
+
+
+## 付表1
+
+```{r}
+#| label: tbl-desc-taikoka
+#| tbl-cap: 改革前と改革後の記述統計（大綱化後）
+
+df_seminar_大綱化 |> 
+  select(勉強ダミー, 学部, 入試形態, 性別, 奨学金有無, 親年収, 出身階層, 改革ダミー) |> 
+  mutate(
+    勉強ダミー = factor(勉強ダミー),
+    改革ダミー = case_when(
+      改革ダミー == 0 ~ '改革前',
+      改革ダミー == 1 ~ '改革後'
+    )
+  ) |> 
+  mutate(across(where(is.factor), \(x) fct_na_value_to_level(x, level = '無回答') |> fct_drop())) |> 
+  mutate(親年収 = fct_collapse(親年収, `わからない・無回答` = '無回答')) |> 
+  rename(`勉強・研究重点`= 勉強ダミー) |> 
+  datasummary_balance(~改革ダミー, data = _, output = 'html')
+
+```
+
+## 付表2
+
+```{r}
+#| label: tbl-desc-AL
+#| tbl-cap: 改革前と改革後の記述統計（質的転換答申後）
+
+
+df_seminar_AL |> 
+  select(勉強ダミー, 自習時間_大学, 学部, 入試形態, 性別, 奨学金有無, 親年収, 出身階層, 改革ダミー) |>  
+  mutate(
+    勉強ダミー = factor(勉強ダミー),
+    改革ダミー = case_when(
+      改革ダミー == 0 ~ '改革前',
+      改革ダミー == 1 ~ '改革後'
+    )) |>  
+  mutate(across(where(is.factor), \(x) fct_na_value_to_level(x, level = '無回答') |> fct_drop())) |> 
+  mutate(親年収 = fct_collapse(親年収, `わからない・無回答` = '無回答')) |> 
+  rename(`勉強・研究重点` = 勉強ダミー, `自習時間（大学関係）` = 自習時間_大学) |> 
+  datasummary_balance(
+    ~改革ダミー, data = _, output = 'html', dinm = F, 
+    notes = str_glue('注：自習時間（大学関係）については、無回答であった{sum(is.na(df_seminar_AL$自習時間_大学))}ケース（{scales::percent(mean(is.na(df_seminar_AL$自習時間_大学)), accuracy = 0.1, suffix = "％")}）を除いて計算')
+  ) 
+
+```
+
