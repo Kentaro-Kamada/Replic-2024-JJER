@@ -8,3 +8,5 @@ renv/
 *files/
 
 /.quarto/
+
+!docs/**/*files/
