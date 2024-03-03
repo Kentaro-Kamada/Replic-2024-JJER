@@ -202,10 +202,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co"># データ読み込み</span></span>
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>result <span class="ot">&lt;-</span> </span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">year =</span> <span class="fu">c</span>(<span class="dv">1993</span>, <span class="dv">1991</span>, <span class="dv">1992</span>, <span class="dv">1994</span><span class="sc">:</span><span class="dv">2020</span>),</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">year =</span> <span class="fu">c</span>(<span class="dv">1993</span>, <span class="dv">1991</span>, <span class="dv">1992</span>, <span class="dv">1994</span><span class="sc">:</span><span class="dv">2019</span>),</span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">path =</span> <span class="fu">list.files</span>(<span class="st">'01_rawdata/生協調査'</span>, <span class="at">full.names =</span> T),</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">enc =</span> <span class="fu">c</span>(<span class="fu">rep</span>(<span class="st">'cp932'</span>, <span class="dv">22</span>), </span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>            <span class="st">'utf-8'</span>, <span class="st">'utf-8'</span>, <span class="st">'cp932'</span>, <span class="st">'cp932'</span>, <span class="st">'cp932'</span>, <span class="st">'utf-8'</span>, <span class="st">'cp932'</span>, <span class="st">'cp932'</span>),</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>            <span class="st">'utf-8'</span>, <span class="st">'utf-8'</span>, <span class="st">'cp932'</span>, <span class="st">'cp932'</span>, <span class="st">'cp932'</span>, <span class="st">'utf-8'</span>, <span class="st">'cp932'</span>),</span>
 <span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> <span class="fu">map2</span>(path, enc, <span class="sc">~</span><span class="fu">read_sav</span>(.x, <span class="at">encoding =</span> .y))</span>
 <span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  )</span>
 <span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
@@ -298,12 +298,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co"># 30年分のデータを読み込み（年度でネストしておく）</span></span>
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>data_list <span class="ot">&lt;-</span> </span>
 <span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(</span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">year =</span> <span class="fu">c</span>(<span class="dv">1993</span>, <span class="dv">1991</span>, <span class="dv">1992</span>, <span class="dv">1994</span><span class="sc">:</span><span class="dv">2020</span>),</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">year =</span> <span class="fu">c</span>(<span class="dv">1993</span>, <span class="dv">1991</span>, <span class="dv">1992</span>, <span class="dv">1994</span><span class="sc">:</span><span class="dv">2019</span>),</span>
 <span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">path =</span> <span class="fu">list.files</span>(<span class="st">'01_rawdata/生協調査'</span>, <span class="at">full.names =</span> T),</span>
 <span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 年によってデータの文字コードが違うので注意</span></span>
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">enc =</span> <span class="fu">c</span>(<span class="fu">rep</span>(<span class="st">'cp932'</span>, <span class="dv">22</span>), </span>
 <span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>            <span class="st">'utf8'</span>, <span class="st">'utf8'</span>, <span class="st">'cp932'</span>, <span class="st">'cp932'</span>, </span>
-<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>            <span class="st">'cp932'</span>, <span class="st">'utf8'</span>, <span class="st">'cp932'</span>, <span class="st">'cp932'</span>),</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>            <span class="st">'cp932'</span>, <span class="st">'utf8'</span>, <span class="st">'cp932'</span>),</span>
 <span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> <span class="fu">map2</span>(path, enc, <span class="sc">~</span><span class="fu">read_sav</span>(.x, <span class="at">encoding =</span> .y))</span>
 <span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span> </span>
 <span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(year, data)</span>

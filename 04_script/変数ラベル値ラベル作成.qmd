@@ -11,10 +11,10 @@ library(kamaken)
 # データ読み込み
 result <- 
   tibble(
-    year = c(1993, 1991, 1992, 1994:2020),
+    year = c(1993, 1991, 1992, 1994:2019),
     path = list.files('01_rawdata/生協調査', full.names = T),
     enc = c(rep('cp932', 22), 
-            'utf-8', 'utf-8', 'cp932', 'cp932', 'cp932', 'utf-8', 'cp932', 'cp932'),
+            'utf-8', 'utf-8', 'cp932', 'cp932', 'cp932', 'utf-8', 'cp932'),
     data = map2(path, enc, ~read_sav(.x, encoding = .y))
   )
 

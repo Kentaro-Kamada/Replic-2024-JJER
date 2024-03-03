@@ -10,12 +10,12 @@ library(kamaken)
 # 30年分のデータを読み込み（年度でネストしておく）
 data_list <- 
   tibble(
-    year = c(1993, 1991, 1992, 1994:2020),
+    year = c(1993, 1991, 1992, 1994:2019),
     path = list.files('01_rawdata/生協調査', full.names = T),
     # 年によってデータの文字コードが違うので注意
     enc = c(rep('cp932', 22), 
             'utf8', 'utf8', 'cp932', 'cp932', 
-            'cp932', 'utf8', 'cp932', 'cp932'),
+            'cp932', 'utf8', 'cp932'),
     data = map2(path, enc, ~read_sav(.x, encoding = .y))
   ) |> 
   select(year, data)
