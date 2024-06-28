@@ -1,6 +1,6 @@
 # Replic-2024-JJER
 
-[鎌田（2024）](https://researchmap.jp/kamaken/published_papers/44513554)の再現コードです。
+[鎌田健太郎，2024，「初年次教育の導入・改革は学生の学習を促進したか——国立総合大学における因果効果の検討」『教育学研究』91(1): 1–12．](https://doi.org/10.11555/kyoiku.91.1_1)の再現コードです。
 
 再現結果：https://kentaro-kamada.github.io/Replic-2024-JJER/
 
